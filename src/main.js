@@ -5,7 +5,7 @@ import { buildEnvironment } from './modules/environment.js';
 import { buildHouse } from './modules/house.js';
 import { createHUD } from './modules/hud.js';
 import { createEnemyManager } from './modules/enemy.js';
-import { clamp, randRange } from './modules/math.js';
+import { clamp } from './modules/math.js';
 
 const WORLD = {
   islandRadius: 26,
@@ -112,6 +112,7 @@ function init() {
 
   window.addEventListener('mousedown', (e) => {
     if (!player.canShoot || !player.alive || state.sleeping) return;
+    if (e.button !== 0) return; // only left click shoots
     shoot();
   });
 
@@ -132,7 +133,8 @@ function init() {
     if (state.inWave || state.sleeping || !state.canStartWave) return;
     const p = controls.getObject().position;
     // Require player to step a bit beyond the outside of the doorway
-    if (Math.abs(p.x) < 1.2 && p.z > doorTrigger.max.z + 0.2) {
+    const halfDoor = (doorTrigger.max.x - doorTrigger.min.x) / 2;
+    if (Math.abs(p.x) < halfDoor + 0.4 && p.z > doorTrigger.max.z + 0.2) {
       beginWave();
     }
   }
@@ -260,8 +262,11 @@ function init() {
     // Raycast forward from camera
     const raycaster = new THREE.Raycaster();
     // Offset origin slightly forward to avoid hitting our own body
-    const origin = camera.position.clone();
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+    // Use world-space transform so shots go where the player looks
+    const origin = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+    const forward = new THREE.Vector3();
+    camera.getWorldDirection(forward).normalize();
     origin.add(forward.clone().multiplyScalar(0.2));
     raycaster.set(origin, forward);
     raycaster.far = 100;
@@ -282,9 +287,15 @@ function init() {
       scene.add(flashMesh);
     }
     flashMesh.visible = true;
-    flashMesh.position.copy(camera.position).add(new THREE.Vector3(0, -0.07, -0.3).applyQuaternion(camera.quaternion));
+    // Place/rotate in world space to match the view direction
+    const camPos = new THREE.Vector3();
+    const camQuat = new THREE.Quaternion();
+    camera.getWorldPosition(camPos);
+    camera.getWorldQuaternion(camQuat);
+    const offset = new THREE.Vector3(0, -0.07, -0.3).applyQuaternion(camQuat);
+    flashMesh.position.copy(camPos).add(offset);
     // Orient cone with camera so it points forward like the weapon
-    flashMesh.quaternion.multiplyQuaternions(camera.quaternion, flashAlignQuat);
+    flashMesh.quaternion.copy(camQuat).multiply(flashAlignQuat);
     setTimeout(() => { if (flashMesh) flashMesh.visible = false; }, 40);
   }
 
@@ -340,6 +351,9 @@ function init() {
 
   function gameOver(text) {
     state.gameOver = true;
+    // Stop any remaining enemy spawns/updates for current wave
+    enemyManager.clearAll();
+    state.inWave = false;
     message.textContent = text;
     overlayBox.innerHTML = `
       <h1>Game Over</h1>
@@ -358,12 +372,12 @@ function init() {
     // Move player back to bed
     const p = getBedPos();
     controls.getObject().position.set(p.x, 1.6, p.z);
-    camera.rotation.set(0, camera.rotation.y, 0);
+    // Reset view orientation (yaw on controls object; clear camera pitch/roll)
+    controls.getObject().rotation.y = 0;
+    camera.rotation.set(0, 0, 0);
     message.textContent = 'Exit the house to begin the first wave.';
     document.getElementById('waveBanner').textContent = 'Day 1';
     overlayBox.innerHTML = defaultOverlayHTML;
     overlay.classList.remove('hidden');
   }
 }
-
-
