@@ -23,6 +23,8 @@ let player = {
 };
 
 let clock = new THREE.Clock();
+let lastShotTime = 0;
+const SHOOT_INTERVAL_MS = 160; // QoL: mild fire rate limit
 
 // Systems
 let enemyManager;
@@ -38,7 +40,9 @@ let state = {
 // DOM
 const overlay = document.getElementById('overlay');
 const fade = document.getElementById('fade');
+const hurt = document.getElementById('hurt');
 const message = document.getElementById('message');
+const crosshairEl = document.getElementById('crosshair');
 
 init();
 
@@ -92,13 +96,14 @@ function init() {
   });
 
   // Input
-  const keys = { forward: false, backward: false, left: false, right: false, jump: false };
+  const keys = { forward: false, backward: false, left: false, right: false, jump: false, sprint: false };
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyW') keys.forward = true;
     if (e.code === 'KeyS') keys.backward = true;
     if (e.code === 'KeyA') keys.left = true;
     if (e.code === 'KeyD') keys.right = true;
     if (e.code === 'Space') keys.jump = true;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.sprint = true;
     if (e.code === 'KeyE') onInteract();
     if (e.code === 'KeyR' && state.gameOver) restart();
   });
@@ -108,6 +113,7 @@ function init() {
     if (e.code === 'KeyA') keys.left = false;
     if (e.code === 'KeyD') keys.right = false;
     if (e.code === 'Space') keys.jump = false;
+    if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') keys.sprint = false;
   });
 
   window.addEventListener('mousedown', (e) => {
@@ -183,8 +189,9 @@ function init() {
     const dt = Math.min(0.033, clock.getDelta());
 
     if (!state.sleeping && controls.isLocked) {
-      // Movement
-      const speed = 6.0;
+      // Movement (with sprint)
+      const baseSpeed = 6.0;
+      const speed = keys.sprint ? baseSpeed * 1.5 : baseSpeed;
       const forwardFactor = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0);
       const rightFactor = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
       camera.getWorldDirection(tmpForward);
@@ -245,6 +252,14 @@ function init() {
 
     const remainingDisplay = enemyManager.getRemainingTotal ? enemyManager.getRemainingTotal() : enemyManager.getRemaining();
     hud.update(player.health, houseState.health, state.day, remainingDisplay);
+
+    // Contextual sleep prompt near bed when all clear
+    if (!state.sleeping && !state.inWave && !state.gameOver && enemyManager.getRemaining() === 0) {
+      const nearBed = controls.getObject().position.distanceTo(getBedPos()) < 2.2;
+      const desired = nearBed ? 'Press E to sleep and start a new day.' : 'All clear. Return to bed and press E to sleep.';
+      if (message.textContent !== desired) message.textContent = desired;
+    }
+
     renderer.render(scene, camera);
   }
   animate();
@@ -263,6 +278,15 @@ function init() {
     const raycaster = new THREE.Raycaster();
     // Offset origin slightly forward to avoid hitting our own body
     // Use world-space transform so shots go where the player looks
+    const now = performance.now();
+    if (now - lastShotTime < SHOOT_INTERVAL_MS) {
+      if (crosshairEl) {
+        crosshairEl.classList.add('cooldown');
+        setTimeout(() => crosshairEl.classList.remove('cooldown'), 100);
+      }
+      return;
+    }
+    lastShotTime = now;
     const origin = new THREE.Vector3();
     camera.getWorldPosition(origin);
     const forward = new THREE.Vector3();
@@ -274,6 +298,11 @@ function init() {
     muzzleFlash();
     if (hit) {
       enemyManager.damage(hit.id, 50);
+      // Hit marker
+      if (crosshairEl) {
+        crosshairEl.classList.add('hit');
+        setTimeout(() => crosshairEl.classList.remove('hit'), 100);
+      }
     }
   }
 
@@ -302,6 +331,11 @@ function init() {
   function onPlayerHit(amount) {
     if (!player.alive) return;
     player.health = clamp(player.health - amount, 0, 100);
+    // Hurt vignette flash
+    if (hurt) {
+      hurt.classList.add('visible');
+      setTimeout(() => hurt.classList.remove('visible'), 180);
+    }
     if (player.health <= 0) {
       player.alive = false;
       gameOver('You were defeated. Press R to restart.');

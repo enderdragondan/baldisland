@@ -67,6 +67,15 @@ canvas { display: block; }
 }
 #crosshair::before { left: 6px; top: 0; width: 2px; height: 14px; border-radius: 2px; }
 #crosshair::after { top: 6px; left: 0; width: 14px; height: 2px; border-radius: 2px; }
+/* Crosshair states */
+#crosshair.cooldown::before, #crosshair.cooldown::after {
+  background: rgba(255,255,255,0.45);
+  box-shadow: 0 0 4px rgba(0,0,0,0.2);
+}
+#crosshair.hit::before, #crosshair.hit::after {
+  background: rgba(80,255,120,0.95);
+  box-shadow: 0 0 8px rgba(80,255,120,0.8);
+}
 
 #waveBanner {
   position: absolute; top: 16px; right: 16px; color: white; font-weight: 600; font-size: 16px;
@@ -82,5 +91,13 @@ canvas { display: block; }
 #fade {
   position: fixed; inset: 0; background: black; opacity: 0; pointer-events: none; transition: opacity 0.8s ease;
 }
+
+/* Hurt vignette overlay */
+#hurt {
+  position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(255,0,0,0.0) 60%, rgba(255,0,0,0.25) 100%);
+  opacity: 0; transition: opacity 0.25s ease; z-index: 1;
+}
+#hurt.visible { opacity: 1; }
 
 a.link { color: #a8e6ff; text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.5); }
