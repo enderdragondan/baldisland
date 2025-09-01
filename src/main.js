@@ -125,7 +125,9 @@ function init() {
   function onInteract() {
     if (state.sleeping || state.gameOver) return;
     // Sleep only after wave complete and when near bed
-    if (!state.inWave && enemyManager.getRemaining() === 0) {
+    // Require that a wave for this day actually started (canStartWave === false)
+    // and that at least one enemy had spawned.
+    if (!state.inWave && !state.canStartWave && enemyManager.hadAnySpawn && enemyManager.hadAnySpawn() && enemyManager.getRemaining() === 0) {
       const nearBed = controls.getObject().position.distanceTo(getBedPos()) < 2.2;
       if (nearBed) {
         sleepAndAdvance();
@@ -253,11 +255,25 @@ function init() {
     const remainingDisplay = enemyManager.getRemainingTotal ? enemyManager.getRemainingTotal() : enemyManager.getRemaining();
     hud.update(player.health, houseState.health, state.day, remainingDisplay);
 
-    // Contextual sleep prompt near bed when all clear
-    if (!state.sleeping && !state.inWave && !state.gameOver && enemyManager.getRemaining() === 0) {
-      const nearBed = controls.getObject().position.distanceTo(getBedPos()) < 2.2;
-      const desired = nearBed ? 'Press E to sleep and start a new day.' : 'All clear. Return to bed and press E to sleep.';
-      if (message.textContent !== desired) message.textContent = desired;
+    // Contextual prompts: only show sleep prompt after a wave actually occurred this day.
+    if (!state.sleeping && !state.inWave && !state.gameOver) {
+      if (!state.canStartWave) {
+        // Post-wave period (canStartWave is false until after sleep)
+        if (enemyManager.hadAnySpawn && enemyManager.hadAnySpawn() && enemyManager.getRemaining() === 0) {
+          const nearBed = controls.getObject().position.distanceTo(getBedPos()) < 2.2;
+          const desired = nearBed ? 'Press E to sleep and start a new day.' : 'All clear. Return to bed and press E to sleep.';
+          if (message.textContent !== desired) message.textContent = desired;
+        }
+      } else {
+        // Pre-wave prompt
+        const desired = 'Walk outside to begin the next wave.';
+        if (state.day === 1) {
+          // Keep original first-run copy unless changed later
+          // No-op; index.html has the initial message
+        } else if (message.textContent !== desired) {
+          message.textContent = desired;
+        }
+      }
     }
 
     renderer.render(scene, camera);
@@ -376,7 +392,7 @@ function init() {
         camera.rotation.z = prevRotZ;
         fade.style.opacity = '0';
         state.sleeping = false;
-        message.textContent = 'Exit the house to begin the next wave.';
+        message.textContent = 'Walk outside to begin the next wave.';
         const banner = document.getElementById('waveBanner');
         banner.textContent = `Day ${state.day}`;
       }, 600);
